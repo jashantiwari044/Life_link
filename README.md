@@ -20,24 +20,24 @@
 
 ## 📸 Key Highlights & Screenshots
 
-### 1. Modern Landing Page
-> *Promotes blood donation awareness, live donation drives, metrics, and instant emergency requests.*
-
-<img src="screenshots/landing_page.png" alt="LifeLink Landing Page" width="100%"/>
-
----
-
-### 2. Donor & Patient Dashboard
+### 1. Donor & Patient Dashboard
 > *Interactive blood compatibility matrix, active emergency alerts, and one-click donor availability toggle.*
 
 <img src="screenshots/user_dashboard.png" alt="User Dashboard" width="100%"/>
 
 ---
 
-### 3. Emergency Blood Request Portal
+### 2. Emergency Blood Request Portal
 > *Fast, multi-step requisition system with hospital selection, required units, patient details, and urgency levels.*
 
 <img src="screenshots/request_blood.png" alt="Request Blood Portal" width="100%"/>
+
+---
+
+### 3. Live Request Status & Lifecycle Timeline
+> *Clear, real-time visual stepper tracking each request stage from Hospital Verification to Blood Bank Dispatch and Delivery.*
+
+<img src="screenshots/request_status_timeline.png" alt="Request Status Timeline" width="100%"/>
 
 ---
 
@@ -57,7 +57,7 @@
 
 ## 🌟 Core Features
 
-- **👤 Donors & Patients:** Create emergency blood requests, track real-time fulfillment status, manage donation history, and toggle donor availability.
+- **👤 Donors & Patients:** Create emergency blood requests, track real-time fulfillment status with a visual timeline, manage donation history, and toggle donor availability.
 - **🏥 Hospitals:** Review and medically verify patient requests, order blood directly from linked blood banks, and confirm delivery.
 - **🩸 Blood Banks:** Live component inventory management, incoming hospital requisition dispatch, and donation camp coordination.
 - **🤝 NGOs:** Organize community blood donation camps, mobilize volunteers, and respond to critical local blood shortages.
@@ -134,7 +134,7 @@ All seed accounts use the default password: **`12345678`**
 |:---|:---|:---|
 | 🛡️ **Admin** | `admin@test.com` | Institutional KYC approval & platform oversight |
 | 👤 **Donor User** | `donor@test.com` | Active donor profile with history & active requests |
-| 👤 **Regular User** | `user@test.com` | Standard recipient/patient account |
+| 👤 **Regular User** | `user@test.com` | Standard recipient/patient account with status timeline |
 | 🏥 **Hospital** | `hospital@test.com` | Request verification & blood bank orders |
 | 🩸 **Blood Bank** | `bloodbank@test.com` | Live inventory stock & camp organizer |
 | 🤝 **NGO** | `ngo@test.com` | Donation drive publishing & volunteer responses |
