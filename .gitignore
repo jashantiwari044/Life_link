@@ -1,0 +1,30 @@
+**/Automation-FrameWork/**/__pycache__
+Automation-FrameWork/.pytest_cache
+.venv
+venv
+**/backend/**/__pycache__
+__pycache__/
+
+# AI & IDE configs
+.claude/
+.qodo/
+.vscode/
+.idea/
+.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Databases
+*.db
+*.sqlite
+healthcare.db
+
+# Environment configuration
+_env
+.env
+
+# Local process logs
+*.log

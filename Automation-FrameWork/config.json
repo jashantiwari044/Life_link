@@ -1,0 +1,8 @@
+{
+  "base_url": "https://magical-dragon-e850c1.netlify.app",
+  "timeout": 10,
+  "credentials": {
+    "valid_user": "test@example.com",
+    "valid_password": "Password123"
+  }
+}

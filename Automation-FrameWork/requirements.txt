@@ -1,0 +1,13 @@
+pytest
+selenium
+webdriver-manager
+pytest-html
+allure-pytest
+fastapi
+httpx
+sqlalchemy
+pydantic-settings
+python-dotenv
+passlib[bcrypt]
+email-validator
+pyjwt
