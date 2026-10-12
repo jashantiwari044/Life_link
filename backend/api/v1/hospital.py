@@ -86,9 +86,20 @@ def get_linked_blood_bank(
     db: Session = Depends(get_db)
 ):
     """
-    Get details of the blood bank currently linked and approved for this hospital. Returns null if none.
+    Get details of the first blood bank currently linked and approved for this hospital.
     """
     return HospitalService.get_linked_blood_bank(db=db, hospital_id=current_org.id)
+
+
+@router.get("/linked-blood-banks", response_model=List[OrganizationResponse])
+def get_linked_blood_banks(
+    current_org: Organization = Depends(require_roles("hospital")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all approved blood banks currently linked with this hospital.
+    """
+    return HospitalService.get_linked_blood_banks(db=db, hospital_id=current_org.id)
 
 
 @router.post("/blood-bank-link", response_model=LinkResponse)
@@ -121,13 +132,26 @@ def list_blood_bank_links(
 
 @router.delete("/blood-bank-link", response_model=LinkResponse)
 def unlink_blood_bank(
+    blood_bank_id: Optional[int] = Query(None, description="Specific blood bank ID to unlink"),
     current_org: Organization = Depends(require_roles("hospital")),
     db: Session = Depends(get_db)
 ):
     """
-    End the hospital's current blood bank association so a new one can be linked.
+    Disconnect from a linked blood bank.
     """
-    return HospitalService.unlink_blood_bank(db=db, hospital_id=current_org.id)
+    return HospitalService.unlink_blood_bank(db=db, hospital_id=current_org.id, blood_bank_id=blood_bank_id)
+
+
+@router.delete("/blood-bank-link/{blood_bank_id}", response_model=LinkResponse)
+def unlink_specific_blood_bank(
+    blood_bank_id: int,
+    current_org: Organization = Depends(require_roles("hospital")),
+    db: Session = Depends(get_db)
+):
+    """
+    Disconnect from a specific linked blood bank.
+    """
+    return HospitalService.unlink_blood_bank(db=db, hospital_id=current_org.id, blood_bank_id=blood_bank_id)
 
 
 @router.get("/approved-blood-banks", response_model=List[OrganizationResponse])

@@ -10,6 +10,7 @@ from backend.schemas.blood_inventory import BloodInventoryResponse, BloodInvento
 from backend.schemas.hospital_blood_bank_link import LinkResponse, LinkApproval
 from backend.schemas.community_response import CommunityResponseResponse
 from backend.schemas.organization import OrganizationResponse
+from backend.schemas.shortage_alert import ShortageAlertCreate, ShortageAlertResponse
 from backend.services.blood_bank_service import BloodBankService
 
 router = APIRouter()
@@ -105,6 +106,18 @@ def process_fulfillment(
     return BloodBankService.process_fulfillment(db=db, request_id=id, blood_bank_id=current_org.id)
 
 
+@router.patch("/requests/{id}/hold", response_model=BloodRequestResponse)
+def put_on_hold(
+    id: int,
+    current_org: Organization = Depends(require_roles("blood_bank")),
+    db: Session = Depends(get_db)
+):
+    """
+    Put request on hold due to insufficient inventory.
+    """
+    return BloodBankService.put_on_hold(db=db, request_id=id, blood_bank_id=current_org.id)
+
+
 @router.patch("/requests/{id}/dispatch", response_model=BloodRequestResponse)
 def mark_dispatched(
     id: int,
@@ -193,3 +206,26 @@ def get_donation_logs(
     Get historical list of logged successful blood collections.
     """
     return BloodBankService.list_donation_logs(db=db, blood_bank_id=current_org.id)
+
+
+@router.post("/shortage-alerts", response_model=ShortageAlertResponse, status_code=status.HTTP_201_CREATED)
+def create_shortage_alert(
+    payload: ShortageAlertCreate,
+    current_org: Organization = Depends(require_roles("blood_bank")),
+    db: Session = Depends(get_db)
+):
+    """
+    Blood bank reports a blood shortage and notifies all approved NGOs to schedule a blood donation drive.
+    """
+    return BloodBankService.create_shortage_alert(db=db, blood_bank_id=current_org.id, alert_in=payload)
+
+
+@router.get("/shortage-alerts", response_model=List[ShortageAlertResponse])
+def list_my_shortage_alerts(
+    current_org: Organization = Depends(require_roles("blood_bank")),
+    db: Session = Depends(get_db)
+):
+    """
+    List shortage alerts and NGO drive requests created by this blood bank.
+    """
+    return BloodBankService.list_shortage_alerts(db=db, blood_bank_id=current_org.id)

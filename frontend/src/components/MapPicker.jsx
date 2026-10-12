@@ -104,7 +104,7 @@ export default function MapPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="rounded-[10px] overflow-hidden border border-line" style={{ height }}>
+      <div className="rounded-[10px] overflow-hidden border border-line relative z-0 isolate" style={{ height }}>
         <MapContainer center={center} zoom={hasPin ? 15 : 11} style={{ height: '100%', width: '100%' }}>
           <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
           <FlyTo token={`${flyToToken}:${internalToken}`} latitude={latitude} longitude={longitude} />

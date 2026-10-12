@@ -52,16 +52,30 @@ class AuthService:
             or_(User.email == login_data.identifier, User.phone_number == login_data.identifier)
         ).first()
 
-        if not user or not verify_password(login_data.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email/phone or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        if user and verify_password(login_data.password, user.password_hash):
+            role = user.role
+            access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": role})
+            return Token(access_token=access_token, token_type="bearer")
 
-        role = user.role
-        access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": role})
-        return Token(access_token=access_token, token_type="bearer")
+        # Fallback to organization check
+        org = db.query(Organization).filter(Organization.email == login_data.identifier).first()
+        if org and verify_password(login_data.password, org.password_hash):
+            if org.approval_status != "APPROVED":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Organization approval status is pending or rejected"
+                )
+            role = org.org_type.lower()
+            access_token = create_access_token(data={"sub": str(org.id), "email": org.email, "role": role})
+            return Token(access_token=access_token, token_type="bearer")
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email/phone or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 
     @staticmethod
     def register_organization(db: Session, org_in: OrganizationCreate) -> Organization:

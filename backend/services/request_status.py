@@ -4,15 +4,16 @@ BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
 
 # Statuses a request can still move out of. Used wherever a list should show
 # everything still in flight rather than only one snapshot status.
-NON_TERMINAL_STATUSES = ["PENDING", "VERIFIED", "OPEN", "READY_FOR_DISPATCH", "DISPATCHED"]
+NON_TERMINAL_STATUSES = ["PENDING", "VERIFIED", "OPEN", "ON_HOLD", "READY_FOR_DISPATCH", "DISPATCHED"]
 
 # Full BloodRequest.status transition table. Every status change in the
 # lifecycle must go through assert_transition so illegal jumps 409 instead
 # of silently overwriting state.
 ALLOWED_TRANSITIONS = {
-    "PENDING": {"VERIFIED", "REJECTED", "CANCELLED"},
-    "VERIFIED": {"READY_FOR_DISPATCH", "OPEN", "CANCELLED"},
-    "OPEN": {"READY_FOR_DISPATCH", "CANCELLED"},
+    "PENDING": {"VERIFIED", "READY_FOR_DISPATCH", "OPEN", "ON_HOLD", "REJECTED", "CANCELLED"},
+    "VERIFIED": {"READY_FOR_DISPATCH", "OPEN", "ON_HOLD", "CANCELLED"},
+    "OPEN": {"READY_FOR_DISPATCH", "ON_HOLD", "CANCELLED"},
+    "ON_HOLD": {"READY_FOR_DISPATCH", "OPEN", "CANCELLED"},
     "READY_FOR_DISPATCH": {"DISPATCHED"},
     "DISPATCHED": {"BLOOD_RECEIVED"},
     "REJECTED": set(),

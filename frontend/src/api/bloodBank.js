@@ -13,6 +13,7 @@ export const bloodBankApi = {
     api.put(`/blood-bank/inventory/${encodeURIComponent(bloodGroup)}`, { units_available: unitsAvailable }),
   setInventoryBatch: (items) => api.put('/blood-bank/inventory', { items }),
   processFulfillment: (id) => api.patch(`/blood-bank/requests/${id}/fulfill`),
+  putOnHold: (id) => api.patch(`/blood-bank/requests/${id}/hold`),
   markDispatched: (id) => api.patch(`/blood-bank/requests/${id}/dispatch`),
   listCommunityResponses: (status) =>
     api.get('/blood-bank/community-responses', status ? { status } : undefined),
@@ -21,4 +22,7 @@ export const bloodBankApi = {
   approveRejectLink: (id, approve) => api.patch(`/blood-bank/link-requests/${id}`, { approve }),
   listLinkedHospitals: () => api.get('/blood-bank/linked-hospitals'),
   getDonationLogs: () => api.get('/blood-bank/donation-logs'),
+  createShortageAlert: (data) => api.post('/blood-bank/shortage-alerts', data),
+  listShortageAlerts: () => api.get('/blood-bank/shortage-alerts'),
 }
+

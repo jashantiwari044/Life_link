@@ -270,7 +270,7 @@ def test_hospital_blood_request_missing_patient_validation(api_client):
         resp = api_client.post(
             "/api/v1/hospital/blood-requests",
             json={
-                "patient_name": "MissingRequester",
+                # missing patient_name
                 "blood_group_required": "A+",
                 "units_required": 1,
                 "hospital_id": hosp.id,

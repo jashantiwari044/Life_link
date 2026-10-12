@@ -11,7 +11,7 @@ export default function MapView({ latitude, longitude, label, height = 220, zoom
   const position = [Number(latitude), Number(longitude)]
 
   return (
-    <div className="rounded-[10px] overflow-hidden border border-line" style={{ height }}>
+    <div className="rounded-[10px] overflow-hidden border border-line relative z-0 isolate" style={{ height }}>
       <MapContainer
         center={position}
         zoom={zoom}

@@ -1,15 +1,22 @@
-from typing import List
+from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.core.models import DonationCamp, BloodRequest, CommunityResponse
+from backend.core.models import DonationCamp, BloodRequest, CommunityResponse, ShortageAlert, Organization
 from backend.schemas.donation_camp import DonationCampCreate
 from backend.services.notification_service import NotificationService
 
 
 class NGOService:
     @staticmethod
-    def create_camp(db: Session, ngo_id: int, camp_in: DonationCampCreate) -> DonationCamp:
+    def list_shortage_alerts(db: Session) -> List[ShortageAlert]:
+        """List blood bank shortage alerts asking NGOs to organize donation drives."""
+        return db.query(ShortageAlert).order_by(ShortageAlert.created_at.desc()).all()
+
+    @staticmethod
+    def create_camp(
+        db: Session, ngo_id: int, camp_in: DonationCampCreate, shortage_alert_id: Optional[int] = None
+    ) -> DonationCamp:
         db_camp = DonationCamp(
             ngo_id=ngo_id,
             title=camp_in.title,
@@ -17,9 +24,27 @@ class NGOService:
             date_time=camp_in.date_time,
             contact_info=camp_in.contact_info,
             latitude=camp_in.latitude,
-            longitude=camp_in.longitude
+            longitude=camp_in.longitude,
+            status="ACTIVE"
         )
         db.add(db_camp)
+        db.flush()
+
+        if shortage_alert_id:
+            alert = db.query(ShortageAlert).filter(ShortageAlert.id == shortage_alert_id).first()
+            if alert:
+                alert.status = "DRIVE_SCHEDULED"
+                db.add(alert)
+                ngo = db.query(Organization).filter(Organization.id == ngo_id).first()
+                ngo_name = ngo.org_name if ngo else "An NGO"
+                NotificationService.create_notification(
+                    db=db,
+                    recipient_id=alert.blood_bank_id,
+                    recipient_type="org",
+                    title="Blood Donation Drive Scheduled",
+                    message=f"{ngo_name} scheduled a drive '{db_camp.title}' at {db_camp.venue} in response to your {alert.blood_group} shortage alert."
+                )
+
         db.commit()
         db.refresh(db_camp)
         return db_camp

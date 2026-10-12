@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Building2, Stethoscope, HeartHandshake } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout.jsx'
 import PasswordInput from '../components/PasswordInput.jsx'
 import AddressField from '../components/AddressField.jsx'
@@ -7,17 +8,15 @@ import {
   isRequired,
   isValidEmail,
   isValidPhone,
-  isValidAadhaar,
   isValidPassword,
-  isValidDob,
 } from '../utils/validators.js'
-import { useAuth, dashboardPathForRole } from '../context/AuthContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import { ApiError } from '../api/index.js'
 
 const orgTypes = [
-  { value: 'hospital', label: 'Hospital' },
-  { value: 'bloodbank', label: 'Blood Bank' },
-  { value: 'ngo', label: 'NGO' },
+  { value: 'hospital', label: 'Hospital', icon: Stethoscope },
+  { value: 'bloodbank', label: 'Blood Bank', icon: Building2 },
+  { value: 'ngo', label: 'NGO', icon: HeartHandshake },
 ]
 
 const orgTypeToBackend = {
@@ -26,23 +25,12 @@ const orgTypeToBackend = {
   ngo: 'NGO',
 }
 
-const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
-
 const inputClass =
   'border rounded-[10px] px-[14px] py-[11px] text-sm bg-white text-ink focus:outline-none focus:border-pink'
 const labelClass = 'text-[13px] font-semibold text-ink'
 const errorClass = 'text-pink-dark text-xs font-semibold'
 
 const initialValues = {
-  fullName: '',
-  dob: '',
-  bloodGroup: '',
-  aadhaar: '',
-  phone: '',
-  email: '',
-  address: '',
-  addressLat: null,
-  addressLng: null,
   orgName: '',
   pocName: '',
   orgContact: '',
@@ -57,12 +45,9 @@ const initialValues = {
 
 export default function Register() {
   const navigate = useNavigate()
-  const { register, registerOrganization } = useAuth()
+  const { registerOrganization } = useAuth()
   const [searchParams] = useSearchParams()
   const initialRole = searchParams.get('role')
-  const [accountType, setAccountType] = useState(
-    initialRole ? 'organization' : 'normal',
-  )
   const [orgType, setOrgType] = useState(
     orgTypes.some((t) => t.value === initialRole) ? initialRole : 'hospital',
   )
@@ -71,6 +56,7 @@ export default function Register() {
   const [docName, setDocName] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
 
   function handleChange(field, value) {
     setValues((v) => ({ ...v, [field]: value }))
@@ -80,51 +66,27 @@ export default function Register() {
   function validate() {
     const nextErrors = {}
 
-    if (accountType === 'normal') {
-      if (!isRequired(values.fullName)) nextErrors.fullName = 'Full name is required.'
-      if (!isRequired(values.dob)) {
-        nextErrors.dob = 'Date of birth is required.'
-      } else if (!isValidDob(values.dob)) {
-        nextErrors.dob = 'Date of birth cannot be in the future.'
-      }
-      if (!isRequired(values.bloodGroup)) nextErrors.bloodGroup = 'Select a blood group.'
-      if (!isRequired(values.aadhaar)) {
-        nextErrors.aadhaar = 'Aadhaar number is required.'
-      } else if (!isValidAadhaar(values.aadhaar)) {
-        nextErrors.aadhaar = 'Aadhaar number must be exactly 12 digits.'
-      }
-      if (!isRequired(values.phone)) {
-        nextErrors.phone = 'Phone number is required.'
-      } else if (!isValidPhone(values.phone)) {
-        nextErrors.phone = 'Enter a valid 10-digit phone number.'
-      }
-      if (!isRequired(values.email)) {
-        nextErrors.email = 'Email is required.'
-      } else if (!isValidEmail(values.email)) {
-        nextErrors.email = 'Enter a valid email address.'
-      }
-      if (!isRequired(values.address)) nextErrors.address = 'Address is required.'
-    } else {
-      if (!isRequired(values.orgName)) nextErrors.orgName = 'Organization name is required.'
-      if (!isRequired(values.pocName)) {
-        nextErrors.pocName = 'Point of contact name is required.'
-      }
-      if (!isRequired(values.orgContact)) {
-        nextErrors.orgContact = 'Contact number is required.'
-      } else if (!isValidPhone(values.orgContact)) {
-        nextErrors.orgContact = 'Enter a valid 10-digit phone number.'
-      }
-      if (!isRequired(values.orgEmail)) {
-        nextErrors.orgEmail = 'Email is required.'
-      } else if (!isValidEmail(values.orgEmail)) {
-        nextErrors.orgEmail = 'Enter a valid email address.'
-      }
-      if (!isRequired(values.regNumber)) {
-        nextErrors.regNumber = 'Registration number / HRF ID is required.'
-      }
-      if (!isRequired(values.orgAddress)) {
-        nextErrors.orgAddress = 'Address is required.'
-      }
+    if (!isRequired(values.orgName)) {
+      nextErrors.orgName = 'Organization name is required.'
+    }
+    if (!isRequired(values.pocName)) {
+      nextErrors.pocName = 'Point of contact name is required.'
+    }
+    if (!isRequired(values.orgContact)) {
+      nextErrors.orgContact = 'Contact phone number is required.'
+    } else if (!isValidPhone(values.orgContact)) {
+      nextErrors.orgContact = 'Enter a valid 10-digit phone number.'
+    }
+    if (!isRequired(values.orgEmail)) {
+      nextErrors.orgEmail = 'Email is required.'
+    } else if (!isValidEmail(values.orgEmail)) {
+      nextErrors.orgEmail = 'Enter a valid email address.'
+    }
+    if (!isRequired(values.regNumber)) {
+      nextErrors.regNumber = 'Registration number / HRF ID is required.'
+    }
+    if (!isRequired(values.orgAddress)) {
+      nextErrors.orgAddress = 'Facility address is required.'
     }
 
     if (!isRequired(values.password)) {
@@ -150,37 +112,22 @@ export default function Register() {
 
     setSubmitting(true)
     try {
-      if (accountType === 'organization') {
-        await registerOrganization({
-          org_name: values.orgName,
-          org_type: orgTypeToBackend[orgType],
-          poc_name: values.pocName,
-          poc_contact: values.orgContact,
-          email: values.orgEmail,
-          registration_number_hrf_id: values.regNumber,
-          address: values.orgAddress,
-          latitude: values.orgAddressLat,
-          longitude: values.orgAddressLng,
-          password: values.password,
-        })
+      await registerOrganization({
+        org_name: values.orgName,
+        org_type: orgTypeToBackend[orgType],
+        poc_name: values.pocName,
+        poc_contact: values.orgContact,
+        email: values.orgEmail,
+        registration_number_hrf_id: values.regNumber,
+        address: values.orgAddress,
+        latitude: values.orgAddressLat,
+        longitude: values.orgAddressLng,
+        password: values.password,
+      })
+      setSuccess(true)
+      setTimeout(() => {
         navigate('/login')
-      } else {
-        const role = await register({
-          full_name: values.fullName,
-          dob: values.dob,
-          blood_group: values.bloodGroup,
-          phone_number: values.phone,
-          email: values.email,
-          address: values.address,
-          // Pinning the home address also seeds the coordinates used to surface
-          // nearby SOS requests, so donors get matched without extra setup.
-          current_lat: values.addressLat,
-          current_lng: values.addressLng,
-          aadhaar_number_redacted: values.aadhaar,
-          password: values.password,
-        })
-        navigate(dashboardPathForRole[role] ?? '/dashboard')
-      }
+      }, 2000)
     } catch (err) {
       if (err instanceof ApiError) {
         setSubmitError(err.detail?.detail ?? err.message ?? 'Registration failed. Please try again.')
@@ -198,244 +145,156 @@ export default function Register() {
 
   return (
     <AuthLayout
-      title="Create Account"
-      subtitle="Join LifeLink to donate, request, or coordinate blood donations."
+      title="Institutional Registration"
+      subtitle="Join LifeLink Central Management Network as a verified healthcare organization."
       wide
       footer={
         <>
-          Already have an account? <Link to="/login">Login</Link>
+          Already registered? <Link to="/login">Login</Link>
         </>
       }
     >
+      {/* Organization Type Selector */}
       <div className="flex gap-2 bg-pink-light rounded-full p-1 mb-6">
-        <button
-          type="button"
-          className={`flex-1 border-none px-[6px] py-[9px] rounded-full text-[13px] font-semibold ${accountType === 'normal' ? 'bg-pink text-white' : 'bg-transparent text-pink-dark'}`}
-          onClick={() => setAccountType('normal')}
-        >
-          Normal User
-        </button>
-        <button
-          type="button"
-          className={`flex-1 border-none px-[6px] py-[9px] rounded-full text-[13px] font-semibold ${accountType === 'organization' ? 'bg-pink text-white' : 'bg-transparent text-pink-dark'}`}
-          onClick={() => setAccountType('organization')}
-        >
-          Organization
-        </button>
+        {orgTypes.map((type) => {
+          const Icon = type.icon
+          const isSelected = orgType === type.value
+          return (
+            <button
+              key={type.value}
+              type="button"
+              className={`flex-1 border-none px-3 py-2.5 rounded-full text-[13px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                isSelected
+                  ? 'bg-pink text-white shadow-xs'
+                  : 'bg-transparent text-pink-dark hover:bg-white/40'
+              }`}
+              onClick={() => setOrgType(type.value)}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{type.label}</span>
+            </button>
+          )
+        })}
       </div>
 
+      {success && (
+        <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold">
+          Registration submitted successfully! Your account will be reviewed by admin for approval. Redirecting to login…
+        </div>
+      )}
+
+      {submitError && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+          {submitError}
+        </div>
+      )}
+
       <form className="text-left flex flex-col gap-4 mt-2" onSubmit={handleSubmit} noValidate>
-        {accountType === 'normal' ? (
-          <>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="fullName" className={labelClass}>Full Name</label>
-              <input
-                id="fullName"
-                type="text"
-                placeholder="Jane Doe"
-                value={values.fullName}
-                onChange={(e) => handleChange('fullName', e.target.value)}
-                className={inputCls('fullName')}
-              />
-              {errors.fullName && <span className={errorClass}>{errors.fullName}</span>}
-            </div>
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="dob" className={labelClass}>Date of Birth</label>
-                <input
-                  id="dob"
-                  type="date"
-                  max={new Date().toISOString().split('T')[0]}
-                  value={values.dob}
-                  onChange={(e) => handleChange('dob', e.target.value)}
-                  className={inputCls('dob')}
-                />
-                {errors.dob && <span className={errorClass}>{errors.dob}</span>}
-              </div>
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="bloodGroup" className={labelClass}>Blood Group</label>
-                <select
-                  id="bloodGroup"
-                  value={values.bloodGroup}
-                  onChange={(e) => handleChange('bloodGroup', e.target.value)}
-                  className={inputCls('bloodGroup')}
-                >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  {bloodGroups.map((bg) => (
-                    <option key={bg} value={bg}>
-                      {bg}
-                    </option>
-                  ))}
-                </select>
-                {errors.bloodGroup && <span className={errorClass}>{errors.bloodGroup}</span>}
-              </div>
-            </div>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="aadhaar" className={labelClass}>Aadhaar Number</label>
-              <input
-                id="aadhaar"
-                type="text"
-                placeholder="XXXX XXXX XXXX"
-                value={values.aadhaar}
-                onChange={(e) => handleChange('aadhaar', e.target.value)}
-                className={inputCls('aadhaar')}
-              />
-              {errors.aadhaar && <span className={errorClass}>{errors.aadhaar}</span>}
-            </div>
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="phone" className={labelClass}>Phone Number</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  placeholder="9000000000"
-                  value={values.phone}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                  className={inputCls('phone')}
-                />
-                {errors.phone && <span className={errorClass}>{errors.phone}</span>}
-              </div>
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="email" className={labelClass}>Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={values.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  className={inputCls('email')}
-                />
-                {errors.email && <span className={errorClass}>{errors.email}</span>}
-              </div>
-            </div>
-            <AddressField
-              id="address"
-              label="Address"
-              value={values.address}
-              latitude={values.addressLat}
-              longitude={values.addressLng}
-              error={errors.address}
-              labelClass={labelClass}
-              errorClass={errorClass}
-              inputClassName={inputCls('address')}
-              onChange={({ address, latitude, longitude }) =>
-                setValues((v) => ({ ...v, address, addressLat: latitude, addressLng: longitude }))
-              }
-            />
-          </>
-        ) : (
-          <>
-            <div className="flex gap-[10px]">
-              {orgTypes.map((type) => (
-                <label
-                  key={type.value}
-                  className="flex-1 border border-line rounded-[10px] p-[10px] text-center text-[13px] font-semibold flex items-center justify-center gap-[6px] cursor-pointer"
-                >
-                  <input
-                    type="radio"
-                    name="orgType"
-                    value={type.value}
-                    checked={orgType === type.value}
-                    onChange={() => setOrgType(type.value)}
-                  />
-                  {type.label}
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="orgName" className={labelClass}>Organization Name</label>
-              <input
-                id="orgName"
-                type="text"
-                placeholder="Ranchi Central Blood Bank"
-                value={values.orgName}
-                onChange={(e) => handleChange('orgName', e.target.value)}
-                className={inputCls('orgName')}
-              />
-              {errors.orgName && <span className={errorClass}>{errors.orgName}</span>}
-            </div>
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="pocName" className={labelClass}>Point of Contact Name</label>
-                <input
-                  id="pocName"
-                  type="text"
-                  placeholder="Dr. Amit Kumar"
-                  value={values.pocName}
-                  onChange={(e) => handleChange('pocName', e.target.value)}
-                  className={inputCls('pocName')}
-                />
-                {errors.pocName && <span className={errorClass}>{errors.pocName}</span>}
-              </div>
-              <div className="flex flex-col gap-[6px] flex-1">
-                <label htmlFor="orgContact" className={labelClass}>Contact Number</label>
-                <input
-                  id="orgContact"
-                  type="tel"
-                  placeholder="9000000000"
-                  value={values.orgContact}
-                  onChange={(e) => handleChange('orgContact', e.target.value)}
-                  className={inputCls('orgContact')}
-                />
-                {errors.orgContact && <span className={errorClass}>{errors.orgContact}</span>}
-              </div>
-            </div>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="orgEmail" className={labelClass}>Email</label>
-              <input
-                id="orgEmail"
-                type="email"
-                placeholder="contact@org.com"
-                value={values.orgEmail}
-                onChange={(e) => handleChange('orgEmail', e.target.value)}
-                className={inputCls('orgEmail')}
-              />
-              {errors.orgEmail && <span className={errorClass}>{errors.orgEmail}</span>}
-            </div>
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="regNumber" className={labelClass}>Registration Number / HRF ID</label>
-              <input
-                id="regNumber"
-                type="text"
-                placeholder="e.g. HRF-2026-0042"
-                value={values.regNumber}
-                onChange={(e) => handleChange('regNumber', e.target.value)}
-                className={inputCls('regNumber')}
-              />
-              {errors.regNumber && <span className={errorClass}>{errors.regNumber}</span>}
-            </div>
-            <AddressField
-              id="orgAddress"
-              label="Address"
-              hint="Search your facility — donors and partners get a map and directions to this pin."
-              value={values.orgAddress}
-              latitude={values.orgAddressLat}
-              longitude={values.orgAddressLng}
-              error={errors.orgAddress}
-              labelClass={labelClass}
-              errorClass={errorClass}
-              inputClassName={inputCls('orgAddress')}
-              onChange={({ address, latitude, longitude }) =>
-                setValues((v) => ({ ...v, orgAddress: address, orgAddressLat: latitude, orgAddressLng: longitude }))
-              }
-            />
-            <div className="flex flex-col gap-[6px]">
-              <label htmlFor="orgDocs" className={labelClass}>Supporting Documents</label>
-              <input
-                id="orgDocs"
-                type="file"
-                onChange={(e) => setDocName(e.target.files[0]?.name ?? '')}
-              />
-              {docName && <span className="text-muted text-xs">Selected: {docName}</span>}
-            </div>
-          </>
-        )}
+        <div className="flex flex-col gap-[6px]">
+          <label htmlFor="orgName" className={labelClass}>
+            {orgType === 'hospital' ? 'Hospital Name' : orgType === 'bloodbank' ? 'Blood Bank Name' : 'NGO Name'}
+          </label>
+          <input
+            id="orgName"
+            type="text"
+            placeholder={
+              orgType === 'hospital'
+                ? 'City Multispeciality Hospital'
+                : orgType === 'bloodbank'
+                ? 'Central Regional Blood Bank'
+                : 'Life Care Foundation'
+            }
+            value={values.orgName}
+            onChange={(e) => handleChange('orgName', e.target.value)}
+            className={inputCls('orgName')}
+          />
+          {errors.orgName && <span className={errorClass}>{errors.orgName}</span>}
+        </div>
 
         <div className="flex gap-3">
           <div className="flex flex-col gap-[6px] flex-1">
-            <label htmlFor="password" className={labelClass}>Password</label>
+            <label htmlFor="pocName" className={labelClass}>Point of Contact (POC) Name</label>
+            <input
+              id="pocName"
+              type="text"
+              placeholder="Dr. Amit Sharma"
+              value={values.pocName}
+              onChange={(e) => handleChange('pocName', e.target.value)}
+              className={inputCls('pocName')}
+            />
+            {errors.pocName && <span className={errorClass}>{errors.pocName}</span>}
+          </div>
+          <div className="flex flex-col gap-[6px] flex-1">
+            <label htmlFor="orgContact" className={labelClass}>Contact Phone</label>
+            <input
+              id="orgContact"
+              type="tel"
+              placeholder="9876543210"
+              value={values.orgContact}
+              onChange={(e) => handleChange('orgContact', e.target.value)}
+              className={inputCls('orgContact')}
+            />
+            {errors.orgContact && <span className={errorClass}>{errors.orgContact}</span>}
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex flex-col gap-[6px] flex-1">
+            <label htmlFor="orgEmail" className={labelClass}>Official Email</label>
+            <input
+              id="orgEmail"
+              type="email"
+              placeholder="contact@organization.org"
+              value={values.orgEmail}
+              onChange={(e) => handleChange('orgEmail', e.target.value)}
+              className={inputCls('orgEmail')}
+            />
+            {errors.orgEmail && <span className={errorClass}>{errors.orgEmail}</span>}
+          </div>
+          <div className="flex flex-col gap-[6px] flex-1">
+            <label htmlFor="regNumber" className={labelClass}>Govt License / Registration No.</label>
+            <input
+              id="regNumber"
+              type="text"
+              placeholder="REG-2026-XXXX"
+              value={values.regNumber}
+              onChange={(e) => handleChange('regNumber', e.target.value)}
+              className={inputCls('regNumber')}
+            />
+            {errors.regNumber && <span className={errorClass}>{errors.regNumber}</span>}
+          </div>
+        </div>
+
+        <AddressField
+          id="orgAddress"
+          label="Facility Address &amp; Location"
+          hint="Search facility address — this location coordinates blood transit and drives."
+          value={values.orgAddress}
+          latitude={values.orgAddressLat}
+          longitude={values.orgAddressLng}
+          error={errors.orgAddress}
+          labelClass={labelClass}
+          errorClass={errorClass}
+          inputClassName={inputCls('orgAddress')}
+          onChange={({ address, latitude, longitude }) =>
+            setValues((v) => ({ ...v, orgAddress: address, orgAddressLat: latitude, orgAddressLng: longitude }))
+          }
+        />
+
+        <div className="flex flex-col gap-[6px]">
+          <label htmlFor="orgDocs" className={labelClass}>Supporting Accreditation / Document (Optional)</label>
+          <input
+            id="orgDocs"
+            type="file"
+            onChange={(e) => setDocName(e.target.files[0]?.name ?? '')}
+            className="text-xs text-muted"
+          />
+          {docName && <span className="text-muted text-xs">Selected: {docName}</span>}
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex flex-col gap-[6px] flex-1">
+            <label htmlFor="password" className={labelClass}>Account Password</label>
             <PasswordInput
               id="password"
               placeholder="••••••••"
@@ -454,26 +313,16 @@ export default function Register() {
               onChange={(e) => handleChange('confirmPassword', e.target.value)}
               className={inputCls('confirmPassword')}
             />
-            {errors.confirmPassword && (
-              <span className={errorClass}>{errors.confirmPassword}</span>
-            )}
+            {errors.confirmPassword && <span className={errorClass}>{errors.confirmPassword}</span>}
           </div>
         </div>
 
-        {accountType === 'organization' && (
-          <p className="text-muted text-xs">
-            Organization accounts require admin approval before you can log in.
-          </p>
-        )}
-        {submitError && (
-          <div className="text-pink-dark text-[13px] font-semibold text-center">{submitError}</div>
-        )}
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center justify-center rounded-full text-[15px] font-semibold bg-pink text-white shadow-[0_8px_20px_rgba(242,70,125,0.35)] transition-transform duration-150 hover:-translate-y-px hover:bg-pink-dark w-full mt-1 p-[13px] disabled:opacity-60"
+          className="w-full py-3 rounded-full text-sm font-bold bg-pink text-white hover:bg-pink-dark shadow-[0_4px_14px_rgba(242,70,125,0.35)] transition-transform duration-150 hover:-translate-y-px mt-2 disabled:opacity-50"
         >
-          {submitting ? 'Creating Account…' : 'Create Account'}
+          {submitting ? 'Registering Organization…' : `Register as ${orgTypes.find(t => t.value === orgType)?.label}`}
         </button>
       </form>
     </AuthLayout>

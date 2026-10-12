@@ -60,6 +60,7 @@ class Organization(Base):
     donation_camps = relationship("DonationCamp", back_populates="ngo")
     notifications = relationship("Notification", back_populates="recipient_org")
     inventory = relationship("BloodInventory", back_populates="blood_bank")
+    shortage_alerts = relationship("ShortageAlert", back_populates="blood_bank")
 
 
 class HospitalBloodBankLink(Base):
@@ -80,7 +81,7 @@ class BloodRequest(Base):
     __tablename__ = "blood_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    requester_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     patient_name = Column(String, nullable=False)
     blood_group_required = Column(String, nullable=False)
     units_required = Column(Integer, nullable=False)
@@ -213,3 +214,18 @@ class Notification(Base):
 
     recipient_user = relationship("User", back_populates="notifications")
     recipient_org = relationship("Organization", back_populates="notifications")
+
+
+class ShortageAlert(Base):
+    __tablename__ = "shortage_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    blood_bank_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    blood_group = Column(String, nullable=False)
+    units_needed = Column(Integer, nullable=False)
+    urgency = Column(String, default="HIGH", nullable=False)  # MEDIUM, HIGH, CRITICAL
+    message = Column(Text, nullable=False)
+    status = Column(String, default="ACTIVE", server_default="ACTIVE", nullable=False)  # ACTIVE, RESOLVED
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    blood_bank = relationship("Organization", back_populates="shortage_alerts")

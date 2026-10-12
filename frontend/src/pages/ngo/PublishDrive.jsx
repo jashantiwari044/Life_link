@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { CheckCircle2 } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { CheckCircle2, AlertTriangle } from 'lucide-react'
 import DashboardLayout from '../../components/DashboardLayout.jsx'
 import { ngoSidebarLinks } from '../../config/sidebarLinks.js'
 import { isRequired } from '../../utils/validators.js'
@@ -26,7 +26,19 @@ const initialValues = {
 
 export default function PublishDrive() {
   const navigate = useNavigate()
-  const [values, setValues] = useState(initialValues)
+  const location = useLocation()
+  const shortageAlert = location.state?.shortageAlert
+
+  const [values, setValues] = useState(() => ({
+    ...initialValues,
+    name: shortageAlert
+      ? `Emergency ${shortageAlert.blood_group} Blood Drive`
+      : '',
+    description: shortageAlert
+      ? `Drive organized in response to shortage alert from ${shortageAlert.blood_bank?.org_name || 'Blood Bank'}. ${shortageAlert.message}`
+      : '',
+    venue: shortageAlert?.blood_bank?.address || '',
+  }))
   const [errors, setErrors] = useState({})
   const [published, setPublished] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -61,14 +73,17 @@ export default function PublishDrive() {
 
     setSubmitting(true)
     try {
-      await ngoApi.createCamp({
-        title: values.name,
-        venue: values.venue,
-        date_time: new Date(dateTime).toISOString(),
-        contact_info: contactInfo,
-        latitude: values.latitude,
-        longitude: values.longitude,
-      })
+      await ngoApi.createCamp(
+        {
+          title: values.name,
+          venue: values.venue,
+          date_time: new Date(dateTime).toISOString(),
+          contact_info: contactInfo,
+          latitude: values.latitude,
+          longitude: values.longitude,
+        },
+        shortageAlert ? shortageAlert.id : undefined
+      )
       setPublished(true)
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.detail?.detail ?? err.message : 'Could not publish the drive.')
@@ -80,7 +95,23 @@ export default function PublishDrive() {
   return (
     <DashboardLayout active="Donation Drives" links={ngoSidebarLinks}>
       <h1 className="text-[26px] font-extrabold mb-[6px]">Publish a Drive</h1>
-      <p className="text-muted mb-6">Create a new blood donation camp and publish it to donors.</p>
+      <p className="text-muted mb-6">Create a new blood donation camp and schedule it for donors and volunteers.</p>
+
+      {shortageAlert && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3 max-w-[560px]">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-amber-900">
+              Responding to Shortage Alert #{shortageAlert.id}
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Target Blood Bank: <strong>{shortageAlert.blood_bank?.org_name ?? 'Partner Bank'}</strong> · Group:{' '}
+              <strong className="font-extrabold text-pink-dark">{shortageAlert.blood_group}</strong> ({shortageAlert.units_needed} units).
+              Publishing will update this alert to "Drive Scheduled" and notify the blood bank.
+            </p>
+          </div>
+        </div>
+      )}
 
       {published ? (
         <div className="bg-white border border-line rounded-2xl p-6 sm:p-8 max-w-[560px] shadow-xs">

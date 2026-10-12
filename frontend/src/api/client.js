@@ -80,6 +80,11 @@ export const api = {
 export function describeError(err, fallback) {
   if (!(err instanceof ApiError)) return fallback
   if (err.status === 0) return err.message
-  const detail = typeof err.detail === 'string' ? err.detail : err.detail?.detail
+  if (typeof err.detail === 'string') return `${fallback} ${err.detail}`
+  if (Array.isArray(err.detail)) {
+    const msgs = err.detail.map((e) => (typeof e === 'string' ? e : e.msg || e.message)).filter(Boolean)
+    if (msgs.length > 0) return `${fallback} (${msgs.join(', ')})`
+  }
+  const detail = typeof err.detail === 'object' ? (err.detail?.detail || err.detail?.message) : null
   return detail ? `${fallback} ${detail}` : fallback
 }

@@ -3,12 +3,13 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 
 from backend.core.models import (
     BloodRequest, HospitalBloodBankLink, RequestFulfillment,
-    CommunityResponse, User, Organization, BloodInventory
+    CommunityResponse, User, Organization, BloodInventory, ShortageAlert
 )
+from backend.schemas.shortage_alert import ShortageAlertCreate
 from backend.services.notification_service import NotificationService
 from backend.services.request_status import assert_transition, BLOOD_GROUPS, NON_TERMINAL_STATUSES
 
@@ -48,12 +49,20 @@ class BloodBankService:
             HospitalBloodBankLink.status == "APPROVED"
         ).all()
         hospital_ids = [link.hospital_id for link in links]
-        if not hospital_ids:
-            return []
 
-        query = db.query(BloodRequest).filter(
-            BloodRequest.hospital_id.in_(hospital_ids)
-        )
+        conditions = [RequestFulfillment.assigned_blood_bank_id == blood_bank_id]
+        if hospital_ids:
+            conditions.append(
+                and_(
+                    BloodRequest.hospital_id.in_(hospital_ids),
+                    RequestFulfillment.assigned_blood_bank_id.is_(None)
+                )
+            )
+
+        query = db.query(BloodRequest).outerjoin(
+            RequestFulfillment, BloodRequest.id == RequestFulfillment.request_id
+        ).filter(or_(*conditions))
+
         if status_filter:
             query = query.filter(BloodRequest.status == status_filter)
         elif not include_completed:
@@ -149,6 +158,8 @@ class BloodBankService:
 
     @staticmethod
     def _authorize_linked_request(db: Session, request: BloodRequest, blood_bank_id: int) -> None:
+        if request.fulfillment and request.fulfillment.assigned_blood_bank_id == blood_bank_id:
+            return
         if not request.hospital_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -192,11 +203,8 @@ class BloodBankService:
             inventory_row.units_available -= request.units_required
             fulfillment.fulfillment_type = "DIRECT"
             request.status = "READY_FOR_DISPATCH"
-            notify_message = "Fulfilled directly from blood bank stock — no donor needed. Blood will be dispatched shortly."
+            notify_message = f"Blood request #{request.id} fulfilled from blood bank stock. Preparing for dispatch."
         elif was_open:
-            # Re-checked an already-published request and stock still falls
-            # short. Say so plainly instead of raising an "OPEN to OPEN"
-            # transition error that means nothing to the person clicking.
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
@@ -209,11 +217,13 @@ class BloodBankService:
             assert_transition(request.status, "OPEN")
             fulfillment.fulfillment_type = "COMMUNITY"
             request.status = "OPEN"
-            notify_message = "Blood bank stock insufficient — request published to donors and NGOs nearby."
+            notify_message = "Blood bank stock insufficient — request published for community and NGO mobilization."
+
 
         db.add(inventory_row)
         db.add(fulfillment)
         db.add(request)
+
         db.commit()
         db.refresh(request)
 
@@ -233,6 +243,30 @@ class BloodBankService:
         if was_open and request.status == "READY_FOR_DISPATCH":
             BloodBankService._stand_down_responders(db, request)
 
+        return request
+
+    @staticmethod
+    def put_on_hold(db: Session, request_id: int, blood_bank_id: int) -> BloodRequest:
+        request = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
+        if not request:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Blood request not found"
+            )
+        BloodBankService._authorize_linked_request(db, request, blood_bank_id)
+        assert_transition(request.status, "ON_HOLD")
+        request.status = "ON_HOLD"
+        db.add(request)
+        db.commit()
+        db.refresh(request)
+        if request.hospital_id:
+            NotificationService.create_notification(
+                db=db,
+                recipient_id=request.hospital_id,
+                recipient_type="org",
+                title="Blood Requisition Put On Hold",
+                message=f"Blood bank placed requisition #{request.id} ({request.blood_group_required}) on hold due to insufficient inventory."
+            )
         return request
 
     @staticmethod
@@ -403,20 +437,6 @@ class BloodBankService:
                 detail="Link request not found"
             )
 
-        if approve:
-            # Mirror of the hospital-side guard: a hospital may hold pending
-            # requests with several banks, but only one may ever be approved.
-            other_link = db.query(HospitalBloodBankLink).filter(
-                HospitalBloodBankLink.hospital_id == link.hospital_id,
-                HospitalBloodBankLink.blood_bank_id != blood_bank_id,
-                HospitalBloodBankLink.status == "APPROVED"
-            ).first()
-            if other_link:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This hospital is already linked to another blood bank."
-                )
-
         link.status = "APPROVED" if approve else "REJECTED"
         db.add(link)
         db.commit()
@@ -493,4 +513,56 @@ class BloodBankService:
                 BloodRequest.hospital_id.in_(linked_hospital_ids) if linked_hospital_ids else False
             )
         ).order_by(CommunityResponse.timestamp.desc()).all()
+
+    @staticmethod
+    def create_shortage_alert(
+        db: Session, blood_bank_id: int, alert_in: ShortageAlertCreate
+    ) -> ShortageAlert:
+        urgency_map = {
+            "EMERGENCY": "CRITICAL",
+            "URGENT": "HIGH",
+            "PLANNED": "MEDIUM",
+        }
+        canonical_urgency = urgency_map.get(alert_in.urgency, alert_in.urgency)
+
+        alert = ShortageAlert(
+            blood_bank_id=blood_bank_id,
+            blood_group=alert_in.blood_group,
+            units_needed=alert_in.units_needed,
+            urgency=canonical_urgency,
+            message=alert_in.message,
+            status="ACTIVE"
+        )
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+
+        bank = db.query(Organization).filter(Organization.id == blood_bank_id).first()
+        bank_name = bank.org_name if bank else "Blood Bank"
+
+        # Broadcast notification to all approved NGOs
+        ngos = db.query(Organization).filter(
+            Organization.org_type == "NGO",
+            Organization.approval_status == "APPROVED"
+        ).all()
+        for ngo in ngos:
+            NotificationService.create_notification(
+                db=db,
+                recipient_id=ngo.id,
+                recipient_type="org",
+                title="Urgent Blood Drive Request",
+                message=(
+                    f"{bank_name} reported an urgent shortage of {alert.blood_group} blood ({alert.units_needed} units). "
+                    f"Urgency: {alert.urgency}. Note: {alert.message}. Please schedule a blood donation drive."
+                )
+            )
+
+        return alert
+
+    @staticmethod
+    def list_shortage_alerts(db: Session, blood_bank_id: int) -> List[ShortageAlert]:
+        return db.query(ShortageAlert).filter(
+            ShortageAlert.blood_bank_id == blood_bank_id
+        ).order_by(ShortageAlert.created_at.desc()).all()
+
 

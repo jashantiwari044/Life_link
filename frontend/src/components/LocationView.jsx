@@ -27,7 +27,7 @@ export default function LocationView({
   const href = pinned ? directionsUrl(latitude, longitude) : address ? addressSearchUrl(address) : null
 
   return (
-    <div className={`border border-line rounded-2xl overflow-hidden bg-white ${className}`}>
+    <div className={`border border-line rounded-2xl overflow-hidden bg-white relative z-0 isolate ${className}`}>
       <div className="p-4">
         {label && (
           <p className="text-muted text-[11px] uppercase tracking-[0.4px] font-semibold mb-1">{label}</p>

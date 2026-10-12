@@ -19,10 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table('donation_camps', schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column('status', sa.String(), nullable=False, server_default='ACTIVE')
-        )
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+    cols = [c['name'] for c in insp.get_columns('donation_camps')]
+    if 'status' not in cols:
+        with op.batch_alter_table('donation_camps', schema=None) as batch_op:
+            batch_op.add_column(
+                sa.Column('status', sa.String(), nullable=False, server_default='ACTIVE')
+            )
 
 
 def downgrade() -> None:

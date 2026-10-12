@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
@@ -8,21 +8,36 @@ from backend.core.models import Organization
 from backend.schemas.donation_camp import DonationCampCreate, DonationCampResponse
 from backend.schemas.blood_request import BloodRequestResponse
 from backend.schemas.community_response import CommunityResponseResponse
+from backend.schemas.shortage_alert import ShortageAlertResponse
 from backend.services.ngo_service import NGOService
 
 router = APIRouter()
 
 
-@router.post("/camps", response_model=DonationCampResponse)
-def publish_donation_camp(
-    camp_in: DonationCampCreate,
+@router.get("/shortage-alerts", response_model=List[ShortageAlertResponse])
+def list_blood_bank_shortage_alerts(
     current_org: Organization = Depends(require_roles("ngo")),
     db: Session = Depends(get_db)
 ):
     """
-    Publish a new donation drive (camp).
+    List blood bank shortage alerts requesting NGOs to organize blood donation drives.
     """
-    return NGOService.create_camp(db=db, ngo_id=current_org.id, camp_in=camp_in)
+    return NGOService.list_shortage_alerts(db=db)
+
+
+@router.post("/camps", response_model=DonationCampResponse)
+def publish_donation_camp(
+    camp_in: DonationCampCreate,
+    shortage_alert_id: Optional[int] = Query(None, description="Optional shortage alert ID this camp responds to"),
+    current_org: Organization = Depends(require_roles("ngo")),
+    db: Session = Depends(get_db)
+):
+    """
+    Publish a new donation drive (camp). Can optionally link to a blood bank shortage alert.
+    """
+    return NGOService.create_camp(
+        db=db, ngo_id=current_org.id, camp_in=camp_in, shortage_alert_id=shortage_alert_id
+    )
 
 
 @router.get("/camps", response_model=List[DonationCampResponse])

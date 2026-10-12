@@ -1,17 +1,43 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertTriangle, CheckCircle2, RotateCcw, Save, Plus, Minus, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  RotateCcw,
+  Save,
+  Plus,
+  Minus,
+  X,
+  BellRing,
+  Send,
+  Clock,
+  ShieldAlert,
+} from 'lucide-react'
 import DashboardLayout from '../../components/DashboardLayout.jsx'
 import LoadError from '../../components/LoadError.jsx'
 import { bloodBankSidebarLinks } from '../../config/sidebarLinks.js'
 import { bloodBankApi, describeError } from '../../api/index.js'
+import { formatDate } from '../../utils/dates.js'
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+const ALERT_BLOOD_GROUPS = ['ALL', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
 function getStockStatus(units) {
   if (units === 0) return { label: 'Out of Stock', badge: 'bg-[#ffe1e1] text-[#d5233f] border-[#fca5a5]', bar: 'bg-[#d5233f]' }
   if (units < 5) return { label: 'Critical Low', badge: 'bg-[#ffe1e1] text-[#d5233f] border-[#fca5a5]', bar: 'bg-[#d5233f]' }
   if (units < 15) return { label: 'Moderate', badge: 'bg-[#fff1d6] text-[#b9770e] border-[#fde68a]', bar: 'bg-[#b9770e]' }
   return { label: 'Optimal', badge: 'bg-[#e3f5e8] text-[#1f8a3d] border-[#86efac]', bar: 'bg-[#1f8a3d]' }
+}
+
+const urgencyBadge = {
+  CRITICAL: 'bg-[#ffe1e1] text-[#d5233f] border-red-200',
+  HIGH: 'bg-[#fff1d6] text-[#b9770e] border-amber-200',
+  MEDIUM: 'bg-blue-50 text-blue-700 border-blue-200',
+}
+
+const statusBadge = {
+  OPEN: 'bg-amber-50 text-amber-700 border-amber-200',
+  DRIVE_SCHEDULED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  RESOLVED: 'bg-slate-100 text-slate-600 border-slate-200',
 }
 
 export default function Inventory() {
@@ -24,6 +50,19 @@ export default function Inventory() {
   const [savingSingleGroup, setSavingSingleGroup] = useState(null)
   const [filter, setFilter] = useState('ALL')
 
+  // Shortage alerts
+  const [shortageAlerts, setShortageAlerts] = useState([])
+  const [alertModalOpen, setAlertModalOpen] = useState(false)
+  const [alertForm, setAlertForm] = useState({
+    blood_group: 'O+',
+    units_needed: 10,
+    urgency: 'HIGH',
+    message: '',
+  })
+  const [alertSubmitting, setAlertSubmitting] = useState(false)
+  const [alertError, setAlertError] = useState('')
+  const [alertSuccess, setAlertSuccess] = useState('')
+
   async function loadInventory() {
     const data = await bloodBankApi.getInventory()
     const map = {}
@@ -35,9 +74,18 @@ export default function Inventory() {
     setEditedValues(map)
   }
 
+  async function loadShortageAlerts() {
+    try {
+      const data = await bloodBankApi.listShortageAlerts()
+      setShortageAlerts(Array.isArray(data) ? data : [])
+    } catch {
+      // Non-blocking
+    }
+  }
+
   useEffect(() => {
-    loadInventory()
-      .catch((err) => setLoadError(describeError(err, 'Could not load inventory.')))
+    Promise.all([loadInventory(), loadShortageAlerts()])
+      .catch((err) => setLoadError(describeError(err, 'Could not load inventory or alerts.')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -118,6 +166,37 @@ export default function Inventory() {
     }
   }
 
+  async function handleSendAlert(e) {
+    e.preventDefault()
+    if (!alertForm.message.trim()) {
+      setAlertError('Please provide a message describing the shortage to NGOs.')
+      return
+    }
+    if (alertForm.units_needed < 1) {
+      setAlertError('Units needed must be at least 1.')
+      return
+    }
+
+    setAlertSubmitting(true)
+    setAlertError('')
+    try {
+      await bloodBankApi.createShortageAlert({
+        blood_group: alertForm.blood_group,
+        units_needed: parseInt(alertForm.units_needed, 10),
+        urgency: alertForm.urgency,
+        message: alertForm.message.trim(),
+      })
+      setAlertSuccess('Shortage alert broadcasted! All registered NGOs have been notified.')
+      setAlertModalOpen(false)
+      await loadShortageAlerts()
+      setTimeout(() => setAlertSuccess(''), 5000)
+    } catch (err) {
+      setAlertError(describeError(err, 'Failed to broadcast shortage alert.'))
+    } finally {
+      setAlertSubmitting(false)
+    }
+  }
+
   const filteredGroups = useMemo(() => {
     if (filter === 'CRITICAL') return BLOOD_GROUPS.filter((bg) => (editedValues[bg] ?? 0) < 5)
     if (filter === 'OPTIMAL') return BLOOD_GROUPS.filter((bg) => (editedValues[bg] ?? 0) >= 15)
@@ -125,15 +204,35 @@ export default function Inventory() {
   }, [filter, editedValues])
 
   return (
-    <DashboardLayout active="Inventory" links={bloodBankSidebarLinks}>
+    <DashboardLayout active="Inventory & Shortages" links={bloodBankSidebarLinks}>
       <div className="flex justify-between items-start flex-wrap gap-4 mb-6">
         <div>
-          <h1 className="text-[26px] font-extrabold mb-[6px]">Blood Bank Inventory</h1>
-          <p className="text-muted">Manage real-time blood stock and perform bulk or inline updates.</p>
+          <h1 className="text-[26px] font-extrabold mb-[6px]">Blood Bank Inventory &amp; Shortages</h1>
+          <p className="text-muted text-sm">
+            Manage real-time blood stock and broadcast shortage alerts to partnering NGOs for donation drives.
+          </p>
         </div>
 
-        {/* Global Save Button at Header */}
-        <div className="flex items-center gap-3">
+        {/* Action Buttons at Header */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setAlertForm({
+                blood_group: 'O+',
+                units_needed: 10,
+                urgency: 'HIGH',
+                message: 'Urgent blood shortage reported. Partnering NGOs are requested to organize a blood donation drive.',
+              })
+              setAlertError('')
+              setAlertModalOpen(true)
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-[10px] text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-[0_4px_12px_rgba(245,158,11,0.25)] transition-transform duration-150 hover:-translate-y-px"
+          >
+            <BellRing className="w-4 h-4" />
+            <span>Notify NGOs of Shortage</span>
+          </button>
+
           {hasUnsavedChanges && (
             <button
               type="button"
@@ -144,6 +243,7 @@ export default function Inventory() {
               Reset
             </button>
           )}
+
           <button
             type="button"
             onClick={handleSaveGlobal}
@@ -174,174 +274,122 @@ export default function Inventory() {
       <LoadError message={loadError} />
 
       {saveSuccess && (
-        <div className="mb-6 p-4 rounded-2xl bg-[#e3f5e8] border border-[#86efac] text-[#1f8a3d] text-sm font-semibold flex items-center justify-between shadow-xs animate-fade-in">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 shrink-0" />
-            <span>{saveSuccess}</span>
-          </div>
-          <button type="button" onClick={() => setSaveSuccess('')} className="p-1 rounded-lg hover:bg-green-100 transition-colors">
-            <X className="w-4 h-4 text-[#1f8a3d]" />
-          </button>
+        <div className="mb-6 p-4 rounded-xl bg-[#e3f5e8] border border-[#86efac] flex items-center gap-3 text-[#1f8a3d] font-semibold text-sm">
+          <CheckCircle2 className="w-5 h-5 shrink-0" />
+          <span>{saveSuccess}</span>
         </div>
       )}
 
-      {/* KPI Stats Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      {alertSuccess && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-amber-800 font-semibold text-sm">
+          <BellRing className="w-5 h-5 shrink-0 text-amber-600" />
+          <span>{alertSuccess}</span>
+        </div>
+      )}
+
+      {/* KPI Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white border border-line rounded-2xl p-5 shadow-xs">
-          <p className="text-muted text-xs font-semibold mb-1">Total Available Units</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-ink">{kpis.total}</span>
-            <span className="text-xs text-muted">units across all groups</span>
-          </div>
+          <p className="text-xs font-semibold text-muted mb-1">Total Blood Units in Stock</p>
+          <p className="text-3xl font-extrabold text-ink">{kpis.total}</p>
+          <p className="text-xs text-muted mt-1">Sum across all 8 blood groups</p>
         </div>
 
         <div className="bg-white border border-line rounded-2xl p-5 shadow-xs">
-          <p className="text-muted text-xs font-semibold mb-1">Low / Critical Stock</p>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-3xl font-extrabold ${kpis.lowCount > 0 ? 'text-[#d5233f]' : 'text-ink'}`}>
-              {kpis.lowCount}
-            </span>
-            <span className="text-xs text-muted">groups &lt; 5 units</span>
-          </div>
+          <p className="text-xs font-semibold text-muted mb-1">Critical Low / Empty</p>
+          <p className={`text-3xl font-extrabold ${kpis.lowCount > 0 ? 'text-[#d5233f]' : 'text-ink'}`}>
+            {kpis.lowCount}
+          </p>
+          <p className="text-xs text-muted mt-1">&lt; 5 units available (action needed)</p>
         </div>
 
         <div className="bg-white border border-line rounded-2xl p-5 shadow-xs">
-          <p className="text-muted text-xs font-semibold mb-1">Optimal Stock</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-[#1f8a3d]">{kpis.optimalCount}</span>
-            <span className="text-xs text-muted">groups &ge; 15 units</span>
-          </div>
+          <p className="text-xs font-semibold text-muted mb-1">Optimal Reserves</p>
+          <p className="text-3xl font-extrabold text-[#1f8a3d]">{kpis.optimalCount}</p>
+          <p className="text-xs text-muted mt-1">15+ units available</p>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex gap-2">
-          {[
-            { id: 'ALL', label: 'All Groups (8)' },
-            { id: 'CRITICAL', label: `Low Stock (${kpis.lowCount})` },
-            { id: 'OPTIMAL', label: `Optimal (${kpis.optimalCount})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setFilter(tab.id)}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                filter === tab.id
-                  ? 'bg-ink text-white shadow-xs'
-                  : 'bg-white text-muted border border-line hover:text-ink'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {hasUnsavedChanges && (
-          <span className="text-xs font-bold text-amber-700 bg-[#fff1d6] px-3.5 py-1.5 rounded-full border border-amber-200 flex items-center gap-1.5 shadow-xs">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span>Unsaved changes in {modifiedGroups.join(', ')}</span>
-          </span>
-        )}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {['ALL', 'CRITICAL', 'OPTIMAL'].map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${
+              filter === f ? 'bg-pink text-white shadow-xs' : 'bg-white text-ink border border-line hover:border-pink'
+            }`}
+          >
+            {f === 'ALL' ? `All Groups (${BLOOD_GROUPS.length})` : f === 'CRITICAL' ? `Critical Low (${kpis.lowCount})` : `Optimal (${kpis.optimalCount})`}
+          </button>
+        ))}
       </div>
 
-      {/* Inventory Grid Cards */}
+      {/* Inventory Grid */}
       {loading ? (
-        <p className="text-muted py-8">Loading inventory stock…</p>
+        <p className="text-muted py-8">Loading inventory…</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
           {filteredGroups.map((bg) => {
-            const currentUnits = editedValues[bg] ?? 0
-            const initialUnits = initialData[bg] ?? 0
-            const isModified = currentUnits !== initialUnits
-            const delta = currentUnits - initialUnits
-            const status = getStockStatus(currentUnits)
+            const val = editedValues[bg] ?? 0
+            const initialVal = initialData[bg] ?? 0
+            const isModified = val !== initialVal
+            const status = getStockStatus(val)
             const isSavingThis = savingSingleGroup === bg
 
             return (
               <div
                 key={bg}
-                className={`bg-white border rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 shadow-sm ${
-                  isModified ? 'border-pink ring-2 ring-pink/20 bg-pink-light/10' : 'border-line hover:border-slate-300'
+                className={`bg-white rounded-2xl p-5 shadow-xs border transition-all flex flex-col justify-between ${
+                  isModified ? 'border-pink ring-2 ring-pink/20' : 'border-line hover:border-slate-300'
                 }`}
               >
                 <div>
                   <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-10 h-10 rounded-xl bg-pink-light text-pink-dark font-extrabold text-lg flex items-center justify-center shadow-inner">
-                        {bg}
-                      </span>
-                      <div>
-                        <h3 className="font-bold text-sm text-ink">Type {bg}</h3>
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${status.badge}`}>
-                          {status.label}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isModified && (
-                      <span
-                        className={`text-xs font-extrabold px-2 py-0.5 rounded-md ${
-                          delta > 0 ? 'bg-[#e3f5e8] text-[#1f8a3d]' : 'bg-[#ffe1e1] text-[#d5233f]'
-                        }`}
-                      >
-                        {delta > 0 ? `+${delta}` : delta}
-                      </span>
-                    )}
+                    <span className="text-2xl font-black text-ink">{bg}</span>
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${status.badge}`}>
+                      {status.label}
+                    </span>
                   </div>
 
-                  {/* Stock progress bar */}
-                  <div className="w-full bg-slate-100 rounded-full h-2 mb-4 overflow-hidden">
+                  {/* Stock Level Bar */}
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${status.bar}`}
-                      style={{ width: `${Math.min(100, (currentUnits / 25) * 100)}%` }}
+                      className={`h-full transition-all duration-300 ${status.bar}`}
+                      style={{ width: `${Math.min(100, (val / 20) * 100)}%` }}
+                    />
+                  </div>
+
+                  {/* Units Count & Manual Input */}
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs text-muted font-medium">Available Units:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={val}
+                      onChange={(e) => handleUnitChange(bg, e.target.value, false)}
+                      className="w-20 px-2 py-1 text-right font-extrabold text-lg text-ink border border-line rounded-lg focus:outline-none focus:border-pink focus:ring-1 focus:ring-pink"
                     />
                   </div>
                 </div>
 
-                <div>
-                  {/* Stepper controls */}
-                  <div className="flex items-center justify-between gap-2 mb-3 bg-slate-50 p-2 rounded-xl border border-line">
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  {/* Quick +/- buttons */}
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => handleUnitChange(bg, -1, true)}
-                      disabled={currentUnits <= 0}
-                      className="w-8 h-8 rounded-lg bg-white border border-line font-bold text-base flex items-center justify-center text-ink hover:bg-slate-100 disabled:opacity-40 transition-colors"
-                      title="Decrease by 1"
+                      className="flex-1 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
                     >
-                      −
+                      -1
                     </button>
-
-                    <div className="flex items-center justify-center gap-1 flex-1">
-                      <input
-                        type="number"
-                        min="0"
-                        value={currentUnits}
-                        onChange={(e) => handleUnitChange(bg, e.target.value, false)}
-                        className="w-16 text-center font-extrabold text-lg bg-transparent focus:outline-none focus:bg-white focus:ring-1 focus:ring-pink rounded py-0.5 text-ink"
-                      />
-                      <span className="text-xs text-muted font-medium">units</span>
-                    </div>
-
                     <button
                       type="button"
                       onClick={() => handleUnitChange(bg, 1, true)}
-                      className="w-8 h-8 rounded-lg bg-white border border-line font-bold text-base flex items-center justify-center text-ink hover:bg-slate-100 transition-colors"
-                      title="Increase by 1"
+                      className="flex-1 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
                     >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Quick delta buttons */}
-                  <div className="flex items-center justify-between gap-1 mb-3">
-                    <button
-                      type="button"
-                      onClick={() => handleUnitChange(bg, -5, true)}
-                      disabled={currentUnits <= 0}
-                      className="flex-1 py-1 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition-colors"
-                    >
-                      -5
+                      +1
                     </button>
                     <button
                       type="button"
@@ -350,16 +398,9 @@ export default function Inventory() {
                     >
                       +5
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUnitChange(bg, 10, true)}
-                      className="flex-1 py-1 rounded text-[11px] font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
-                    >
-                      +10
-                    </button>
                   </div>
 
-                  {/* Inline quick save */}
+                  {/* Quick Save if modified */}
                   {isModified && (
                     <button
                       type="button"
@@ -370,12 +411,116 @@ export default function Inventory() {
                       {isSavingThis ? 'Saving…' : 'Quick Save'}
                     </button>
                   )}
+
+                  {/* Alert NGOs button if low stock */}
+                  {val < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAlertForm({
+                          blood_group: bg,
+                          units_needed: Math.max(5, 10 - val),
+                          urgency: val === 0 ? 'CRITICAL' : 'HIGH',
+                          message: `Critical stock shortage for ${bg} (${val} units in blood bank). Requesting urgent donation drive support.`,
+                        })
+                        setAlertError('')
+                        setAlertModalOpen(true)
+                      }}
+                      className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <BellRing className="w-3.5 h-3.5" />
+                      <span>Alert NGOs for {bg}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )
           })}
         </div>
       )}
+
+      {/* Broadcasted Shortage Alerts to NGOs Section */}
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-ink flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+              <span>Broadcasted Shortage Alerts to NGOs</span>
+            </h2>
+            <p className="text-muted text-xs">
+              Alerts sent to partnering NGOs to mobilize emergency blood donation drives.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAlertForm({
+                blood_group: 'ALL',
+                units_needed: 15,
+                urgency: 'HIGH',
+                message: 'General blood shortage across multiple blood groups. We request partnering NGOs to organize a donation drive.',
+              })
+              setAlertError('')
+              setAlertModalOpen(true)
+            }}
+            className="text-amber-600 hover:text-amber-700 text-xs font-bold inline-flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Create New Shortage Alert</span>
+          </button>
+        </div>
+
+        {shortageAlerts.length === 0 ? (
+          <div className="bg-white border border-line rounded-2xl p-6 text-center text-muted text-sm shadow-xs">
+            No active shortage alerts currently broadcasted. When inventory drops low, click "Notify NGOs of Shortage" to mobilize donation drives.
+          </div>
+        ) : (
+          <div className="bg-white border border-line rounded-2xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-line bg-slate-50 text-muted text-xs uppercase tracking-wider">
+                    <th className="text-left px-5 py-3">Blood Group</th>
+                    <th className="text-left px-5 py-3">Units Needed</th>
+                    <th className="text-left px-5 py-3">Urgency</th>
+                    <th className="text-left px-5 py-3">Status</th>
+                    <th className="text-left px-5 py-3">Message</th>
+                    <th className="text-left px-5 py-3">Broadcasted</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {shortageAlerts.map((alert) => (
+                    <tr key={alert.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-3.5 font-bold text-pink-dark">
+                        {alert.blood_group}
+                      </td>
+                      <td className="px-5 py-3.5 font-semibold text-ink">
+                        {alert.units_needed} unit(s)
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${urgencyBadge[alert.urgency] ?? 'bg-slate-100 text-slate-700'}`}>
+                          {alert.urgency}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${statusBadge[alert.status] ?? 'bg-slate-100 text-slate-700'}`}>
+                          {alert.status === 'DRIVE_SCHEDULED' ? 'Drive Scheduled 🎉' : alert.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-muted max-w-xs truncate" title={alert.message}>
+                        {alert.message}
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-muted whitespace-nowrap">
+                        {formatDate(alert.created_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Floating Bottom Bar if Unsaved Changes Exist */}
       {hasUnsavedChanges && (
@@ -412,7 +557,124 @@ export default function Inventory() {
           </div>
         </div>
       )}
+
+      {/* Shortage Alert Modal */}
+      {alertModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-line relative animate-scale-up">
+            <button
+              type="button"
+              onClick={() => setAlertModalOpen(false)}
+              className="absolute top-4 right-4 text-muted hover:text-ink p-1 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                <BellRing className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-ink">Notify NGOs of Shortage</h3>
+                <p className="text-xs text-muted">Broadcast to all active NGOs to organize donation drives.</p>
+              </div>
+            </div>
+
+            {alertError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
+                {alertError}
+              </div>
+            )}
+
+            <form onSubmit={handleSendAlert} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Blood Group in Shortage
+                </label>
+                <select
+                  value={alertForm.blood_group}
+                  onChange={(e) => setAlertForm({ ...alertForm, blood_group: e.target.value })}
+                  className="w-full px-3 py-2 border border-line rounded-xl text-sm font-semibold focus:outline-none focus:border-pink"
+                >
+                  {ALERT_BLOOD_GROUPS.map((bg) => (
+                    <option key={bg} value={bg}>
+                      {bg === 'ALL' ? 'ALL Groups (General Shortage)' : `${bg} Blood`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Units Needed
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={alertForm.units_needed}
+                    onChange={(e) => setAlertForm({ ...alertForm, units_needed: e.target.value })}
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm font-semibold focus:outline-none focus:border-pink"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Urgency Level
+                  </label>
+                  <select
+                    value={alertForm.urgency}
+                    onChange={(e) => setAlertForm({ ...alertForm, urgency: e.target.value })}
+                    className="w-full px-3 py-2 border border-line rounded-xl text-sm font-semibold focus:outline-none focus:border-pink"
+                  >
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Message / Drive Request Note
+                </label>
+                <textarea
+                  rows="3"
+                  value={alertForm.message}
+                  onChange={(e) => setAlertForm({ ...alertForm, message: e.target.value })}
+                  placeholder="e.g. Critical depletion of O+ blood due to multiple surgeries. Urgent camp needed."
+                  className="w-full px-3 py-2 border border-line rounded-xl text-sm focus:outline-none focus:border-pink"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAlertModalOpen(false)}
+                  disabled={alertSubmitting}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={alertSubmitting}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {alertSubmitting ? (
+                    'Broadcasting…'
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Broadcast to NGOs</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }
-

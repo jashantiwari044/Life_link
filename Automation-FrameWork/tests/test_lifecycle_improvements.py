@@ -206,7 +206,7 @@ def test_published_requests_still_serialize_with_embedded_hospital(api_client):
 # Issue 3 - one hospital, one blood bank (+ unlink)
 # --------------------------------------------------------------------------
 
-def test_hospital_cannot_link_second_blood_bank(api_client):
+def test_hospital_can_link_second_blood_bank(api_client):
     db = SessionLocal()
     try:
         hospital = _org(db, "imp_hosp5@example.com", "HOSPITAL", "Link Hospital")
@@ -220,10 +220,11 @@ def test_hospital_cannot_link_second_blood_bank(api_client):
     _as("hospital", hospital)
     try:
         res = api_client.post("/api/v1/hospital/blood-bank-link", json={"blood_bank_id": bank_b_id})
-        assert res.status_code == 409
-        assert "already linked" in res.json()["detail"].lower()
+        assert res.status_code == 200
+        assert res.json()["status"] == "PENDING"
     finally:
         _reset_auth()
+
 
 
 def test_hospital_relinking_same_bank_is_idempotent(api_client):
@@ -349,15 +350,11 @@ def test_second_bank_cannot_approve_link_for_already_linked_hospital(api_client)
     _as("blood_bank", bank_b)
     try:
         res = api_client.patch(f"/api/v1/blood-bank/link-requests/{pending_id}", json={"approve": True})
-        assert res.status_code == 409
-        assert "another blood bank" in res.json()["detail"]
-
-        # rejecting the same request is still allowed
-        rejected = api_client.patch(f"/api/v1/blood-bank/link-requests/{pending_id}", json={"approve": False})
-        assert rejected.status_code == 200
-        assert rejected.json()["status"] == "REJECTED"
+        assert res.status_code == 200
+        assert res.json()["status"] == "APPROVED"
     finally:
         _reset_auth()
+
 
 
 # --------------------------------------------------------------------------

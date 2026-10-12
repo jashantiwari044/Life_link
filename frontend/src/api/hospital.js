@@ -8,8 +8,11 @@ export const hospitalApi = {
     api.patch(`/hospital/blood-requests/${id}/verify`, { approve, rejection_reason: rejectionReason }),
   confirmReceived: (id) => api.patch(`/hospital/blood-requests/${id}/received`),
   getLinkedBloodBank: () => api.get('/hospital/linked-blood-bank'),
+  getLinkedBloodBanks: () => api.get('/hospital/linked-blood-banks'),
   requestBloodBankLink: (bloodBankId) => api.post('/hospital/blood-bank-link', { blood_bank_id: bloodBankId }),
   listBloodBankLinks: () => api.get('/hospital/blood-bank-links'),
-  unlinkBloodBank: () => api.delete('/hospital/blood-bank-link'),
+  unlinkBloodBank: (bloodBankId) =>
+    bloodBankId ? api.delete(`/hospital/blood-bank-link/${bloodBankId}`) : api.delete('/hospital/blood-bank-link'),
   searchBloodBanks: (query) => api.get('/hospital/approved-blood-banks', query ? { q: query } : undefined),
 }
+

@@ -24,9 +24,9 @@ export default function Modal({ open, title, onClose, children, footer, width = 
 
   return (
     <div
-      // z-[1200] clears Leaflet: its map controls sit at z-index 1000, so a
+      // z-[9999] clears Leaflet: its map controls sit at z-index 1000, so a
       // z-50 overlay rendered under any map on the page.
-      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 backdrop-blur-xs px-4 py-8 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-xs px-4 py-8 animate-in fade-in duration-150"
       role="presentation"
       onClick={() => onClose?.()}
     >

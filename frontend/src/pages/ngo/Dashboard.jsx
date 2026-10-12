@@ -8,6 +8,8 @@ import {
   Building2,
   Plus,
   HeartHandshake,
+  ShieldAlert,
+  AlertTriangle,
 } from 'lucide-react'
 import DashboardLayout from '../../components/DashboardLayout.jsx'
 import LoadError from '../../components/LoadError.jsx'
@@ -21,19 +23,32 @@ const priorityBadge = {
   PLANNED: 'bg-[#e3f5e8] text-[#1f8a3d] border border-green-200',
 }
 
+const urgencyBadge = {
+  CRITICAL: 'bg-[#ffe1e1] text-[#d5233f] border border-red-200',
+  HIGH: 'bg-[#fff1d6] text-[#b9770e] border border-amber-200',
+  MEDIUM: 'bg-blue-50 text-blue-700 border border-blue-200',
+}
+
 export default function NgoDashboard() {
   const [org, setOrg] = useState(null)
   const [drives, setDrives] = useState([])
   const [myResponses, setMyResponses] = useState([])
+  const [shortageAlerts, setShortageAlerts] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    Promise.all([orgsApi.getMe(), ngoApi.listMyCamps(), ngoApi.getMyResponses()])
-      .then(([orgData, campData, responseData]) => {
+    Promise.all([
+      orgsApi.getMe(),
+      ngoApi.listMyCamps(),
+      ngoApi.getMyResponses(),
+      ngoApi.listShortageAlerts(),
+    ])
+      .then(([orgData, campData, responseData, alertsData]) => {
         setOrg(orgData)
-        setDrives(campData)
-        setMyResponses(responseData)
+        setDrives(campData || [])
+        setMyResponses(responseData || [])
+        setShortageAlerts(Array.isArray(alertsData) ? alertsData : [])
       })
       .catch((err) => setLoadError(describeError(err, 'Could not load the dashboard.')))
       .finally(() => setLoading(false))
@@ -90,17 +105,89 @@ export default function NgoDashboard() {
         </Link>
 
         <Link
-          to="/ngo/my-responses"
+          to="/ngo/shortages"
           className="bg-white border border-line rounded-2xl p-5 w-[220px] shadow-xs transition-all hover:border-pink group block"
         >
           <div className="flex justify-between items-start">
-            <p className="text-muted text-xs mb-1 font-semibold">Donations Completed</p>
+            <p className="text-muted text-xs mb-1 font-semibold">Shortage Alerts</p>
             <ArrowRight className="w-3.5 h-3.5 text-pink opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          <p className="text-2xl font-extrabold text-[#1f8a3d]">{completedResponses.length}</p>
-          <p className="text-[11px] text-muted mt-1">Verified blood collections</p>
+          <p className="text-2xl font-extrabold text-amber-600">
+            {shortageAlerts.filter((a) => a.status === 'OPEN').length}
+          </p>
+          <p className="text-[11px] text-muted mt-1">
+            {shortageAlerts.length} total broadcasted
+          </p>
         </Link>
       </div>
+
+      {/* Blood Bank Shortage Alerts */}
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-ink flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+              <span>Blood Bank Shortage Alerts</span>
+            </h2>
+            <p className="text-muted text-xs">
+              Urgent blood stock shortages reported by blood banks. Schedule drives to respond.
+            </p>
+          </div>
+          <Link to="/ngo/shortages" className="text-pink-dark text-xs font-bold hover:underline inline-flex items-center gap-1">
+            <span>View All Alerts ({shortageAlerts.length})</span>
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        {shortageAlerts.filter((a) => a.status === 'OPEN').length === 0 ? (
+          <div className="bg-white border border-line rounded-2xl p-6 text-center text-muted text-sm shadow-xs">
+            No active open shortage alerts from blood banks at the moment.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3.5">
+            {shortageAlerts
+              .filter((a) => a.status === 'OPEN')
+              .slice(0, 3)
+              .map((alert) => (
+                <div
+                  key={alert.id}
+                  className="bg-white border border-line rounded-2xl p-5 shadow-xs hover:border-slate-300 transition-all flex items-center justify-between flex-wrap gap-4"
+                >
+                  <div className="flex-1 min-w-[240px]">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-base font-extrabold text-pink-dark">
+                        {alert.blood_group === 'ALL' ? 'ALL Groups' : alert.blood_group}
+                      </span>
+                      <span className="text-xs font-bold text-slate-700">
+                        · {alert.units_needed} units needed
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${urgencyBadge[alert.urgency] ?? 'bg-slate-100 text-slate-700'}`}>
+                        {alert.urgency}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 line-clamp-1 mb-1">
+                      {alert.message}
+                    </p>
+                    <p className="text-[11px] text-muted flex items-center gap-1.5">
+                      <Building2 className="w-3 h-3 text-slate-400" />
+                      <span>{alert.blood_bank?.org_name ?? `Blood Bank #${alert.blood_bank_id}`}</span>
+                      <span>· {formatDate(alert.created_at)}</span>
+                    </p>
+                  </div>
+
+                  <Link
+                    to="/ngo/drives/publish"
+                    state={{ shortageAlert: alert }}
+                    className="inline-flex items-center justify-center gap-1 rounded-full px-4 py-2 text-xs font-bold bg-pink text-white shadow-xs hover:bg-pink-dark transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Organize Drive</span>
+                  </Link>
+                </div>
+              ))}
+          </div>
+        )}
+      </section>
 
       {/* My Accepted Requests */}
       <section className="mb-10">

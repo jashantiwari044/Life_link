@@ -203,7 +203,7 @@ export default function AdminDashboard() {
 
       {/* Revoke confirmation dialog */}
       {revokingOrg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-[420px] p-6">
             <div className="w-10 h-10 rounded-xl bg-red-100 text-[#d5233f] flex items-center justify-center mb-3">
               <ShieldAlert className="w-5 h-5" />

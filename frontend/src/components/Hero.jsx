@@ -14,19 +14,18 @@ export default function Hero() {
           <HeroIllustration />
         </div>
         <div className="flex-1 text-left max-[860px]:text-center">
-          <h1 className="text-[52px] font-extrabold leading-[1.1] tracking-[-1px] mb-5">
-            Donate <span className="text-pink">Blood</span>. Save Lives.
+          <h1 className="text-[50px] font-extrabold leading-[1.1] tracking-[-1px] mb-5">
+            Central <span className="text-pink">Healthcare</span> Management
           </h1>
           <p className="text-[17px] text-muted max-w-[480px] leading-[1.6] mb-8 max-[860px]:mx-auto">
-            One platform connecting blood donors, hospitals, NGOs and people in
-            need during emergencies.
+            A unified network connecting Hospitals, Blood Banks, and NGOs for direct blood requisitions, inventory fulfillment, and shortage drive mobilization.
           </p>
           <div className="flex gap-4 max-[860px]:justify-center">
-            <Link to="/register" className={btnPrimary}>
-              Donate Blood
+            <Link to="/login" className={btnPrimary}>
+              Portal Login
             </Link>
             <Link to="/register" className={btnSecondary}>
-              Request Blood
+              Register Facility
             </Link>
           </div>
         </div>

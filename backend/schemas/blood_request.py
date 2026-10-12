@@ -18,9 +18,14 @@ class BloodRequestCreate(BloodRequestBase):
     hospital_id: int
 
 
+class HospitalBloodRequestCreate(BloodRequestBase):
+    requester_id: Optional[int] = None
+    blood_bank_id: Optional[int] = None
+
+
 class BloodRequestResponse(BloodRequestBase):
     id: int
-    requester_id: int
+    requester_id: Optional[int] = None
     status: str
     created_at: datetime.datetime
     # Embedded so every consumer renders the hospital name instead of a raw id.

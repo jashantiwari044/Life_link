@@ -393,3 +393,70 @@ def test_inventory_get_and_set(api_client):
         assert bad_resp.status_code == 422
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_create_shortage_alert_and_ngo_mobilize(api_client):
+    db = SessionLocal()
+    try:
+        blood_bank = _create_org(db, "bb_alert@example.com", org_type="BLOOD_BANK")
+        ngo = _create_org(db, "ngo_alert@example.com", org_type="NGO")
+        bank_id = blood_bank.id
+        ngo_id = ngo.id
+    finally:
+        db.close()
+
+    # 1. Blood bank posts shortage alert with priority value "EMERGENCY"
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=bank_id, role="blood_bank")
+    try:
+        resp = api_client.post(
+            "/api/v1/blood-bank/shortage-alerts",
+            json={
+                "blood_group": "O+",
+                "units_needed": 5,
+                "urgency": "EMERGENCY",
+                "message": "Urgent requisition shortage for Test Hospital."
+            }
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["blood_group"] == "O+"
+        assert data["units_needed"] == 5
+        assert data["urgency"] == "CRITICAL"  # normalized
+        alert_id = data["id"]
+
+        # List bank shortage alerts
+        list_resp = api_client.get("/api/v1/blood-bank/shortage-alerts")
+        assert list_resp.status_code == 200
+        assert any(a["id"] == alert_id for a in list_resp.json())
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    # 2. NGO lists shortage alerts
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=ngo_id, role="ngo")
+    try:
+        ngo_alerts = api_client.get("/api/v1/ngo/shortage-alerts")
+        assert ngo_alerts.status_code == 200
+        found = next((a for a in ngo_alerts.json() if a["id"] == alert_id), None)
+        assert found is not None
+        assert found["status"] == "ACTIVE"
+
+        # 3. NGO mobilizes a donation camp tied to this shortage alert
+        camp_resp = api_client.post(
+            f"/api/v1/ngo/camps?shortage_alert_id={alert_id}",
+            json={
+                "title": "Emergency O+ Blood Drive",
+                "venue": "City Center Hall",
+                "date_time": (datetime.datetime.utcnow() + datetime.timedelta(days=2)).isoformat(),
+                "contact_info": "9876543210"
+            }
+        )
+        assert camp_resp.status_code in (200, 201)
+
+        # 4. Verify shortage alert status transitioned to DRIVE_SCHEDULED
+        ngo_alerts_after = api_client.get("/api/v1/ngo/shortage-alerts")
+        updated_alert = next((a for a in ngo_alerts_after.json() if a["id"] == alert_id), None)
+        assert updated_alert is not None
+        assert updated_alert["status"] == "DRIVE_SCHEDULED"
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
